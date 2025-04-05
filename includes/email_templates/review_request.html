@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4a90e2;
+        }
+        .content {
+            padding: 20px 0;
+        }
+        .stay-details {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px 0;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4a90e2;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .stars {
+            color: #ffd700;
+            font-size: 24px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>How Was Your Stay?</h1>
+    </div>
+    
+    <div class="content">
+        <p>Dear {{name}},</p>
+        
+        <p>Thank you for choosing CampNest for your recent camping adventure! We hope you had a wonderful time.</p>
+        
+        <div class="stay-details">
+            <h2>Your Stay</h2>
+            <p><strong>Campsite:</strong> {{campsite}}</p>
+            <p><strong>Check-in:</strong> {{check_in}}</p>
+            <p><strong>Check-out:</strong> {{check_out}}</p>
+        </div>
+        
+        <p>Would you take a moment to share your experience? Your feedback helps other campers make informed decisions and helps us improve our services.</p>
+        
+        <div style="text-align: center;">
+            <p><strong>Rate your experience:</strong></p>
+            <a href="index.php?page=review&booking_id={{booking_id}}" class="button">Write a Review</a>
+        </div>
+        
+        <p>Your review will help us:</p>
+        <ul>
+            <li>Improve our campsite facilities and services</li>
+            <li>Help future campers make informed decisions</li>
+            <li>Maintain the high standards you expect from CampNest</li>
+        </ul>
+        
+        <p>It only takes a few minutes to share your thoughts, and we truly value your feedback.</p>
+    </div>
+    
+    <div class="footer">
+        <p>Thank you for being part of the CampNest community!</p>
+        <p>We hope to welcome you back soon for another great camping experience.</p>
+    </div>
+</body>
+</html> 

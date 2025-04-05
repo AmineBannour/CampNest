@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4a90e2;
+        }
+        .content {
+            padding: 20px 0;
+        }
+        .booking-details {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px 0;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4a90e2;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Booking Confirmation</h1>
+    </div>
+    
+    <div class="content">
+        <p>Dear {{name}},</p>
+        
+        <p>Thank you for choosing CampNest! Your booking has been confirmed.</p>
+        
+        <div class="booking-details">
+            <h2>Booking Details</h2>
+            <p><strong>Booking ID:</strong> #{{booking_id}}</p>
+            <p><strong>Campsite:</strong> {{campsite}}</p>
+            <p><strong>Check-in:</strong> {{check_in}}</p>
+            <p><strong>Check-out:</strong> {{check_out}}</p>
+            
+            {{services}}
+            
+            <p><strong>Total Amount:</strong> ${{total}}</p>
+        </div>
+        
+        <p>Important Information:</p>
+        <ul>
+            <li>Check-in time is after 2:00 PM</li>
+            <li>Check-out time is before 11:00 AM</li>
+            <li>Please have a valid ID ready at check-in</li>
+            <li>For any questions or special requests, please contact us</li>
+        </ul>
+        
+        <a href="index.php?page=profile" class="button">View Booking Details</a>
+    </div>
+    
+    <div class="footer">
+        <p>Thank you for choosing CampNest for your outdoor adventure!</p>
+        <p>If you have any questions, please don't hesitate to contact us.</p>
+    </div>
+</body>
+</html> 

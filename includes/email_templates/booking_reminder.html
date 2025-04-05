@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4a90e2;
+        }
+        .content {
+            padding: 20px 0;
+        }
+        .reminder-box {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #4a90e2;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px 0;
+            border-top: 1px solid #eee;
+            color: #666;
+            font-size: 14px;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4a90e2;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Your Camping Trip is Coming Up!</h1>
+    </div>
+    
+    <div class="content">
+        <p>Dear {{name}},</p>
+        
+        <p>This is a friendly reminder about your upcoming camping trip at CampNest.</p>
+        
+        <div class="reminder-box">
+            <h2>Trip Details</h2>
+            <p><strong>Booking ID:</strong> #{{booking_id}}</p>
+            <p><strong>Campsite:</strong> {{campsite}}</p>
+            <p><strong>Check-in:</strong> {{check_in}}</p>
+            <p><strong>Check-out:</strong> {{check_out}}</p>
+            
+            {{services}}
+        </div>
+        
+        <h3>Pre-arrival Checklist:</h3>
+        <ul>
+            <li>Pack appropriate clothing for the weather</li>
+            <li>Bring valid ID for check-in</li>
+            <li>Review campsite rules and guidelines</li>
+            <li>Check weather forecast</li>
+            <li>Prepare any necessary camping equipment</li>
+        </ul>
+        
+        <p><strong>Important Reminders:</strong></p>
+        <ul>
+            <li>Check-in time: After 2:00 PM</li>
+            <li>Check-out time: Before 11:00 AM</li>
+            <li>Quiet hours: 10:00 PM - 7:00 AM</li>
+        </ul>
+        
+        <a href="index.php?page=profile" class="button">View Booking Details</a>
+        
+        <p>Need to modify your booking? Please contact us as soon as possible.</p>
+    </div>
+    
+    <div class="footer">
+        <p>We're looking forward to hosting you at CampNest!</p>
+        <p>If you have any questions, please don't hesitate to contact us.</p>
+    </div>
+</body>
+</html> 
