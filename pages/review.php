@@ -5,17 +5,12 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Check if booking_id is provided and valid
-if (!isset($_GET['booking_id'])) {
-    header('Location: index.php?page=profile');
-    exit();
-}
+// Get booking ID from URL
+$booking_id = isset($_GET['booking_id']) ? (int)$_GET['booking_id'] : 0;
 
-$booking_id = (int)$_GET['booking_id'];
-
-// Verify the booking belongs to the user and is completed
+// Verify booking exists and belongs to user
 $stmt = $conn->prepare("
-    SELECT b.*, c.name as campsite_name, c.type as campsite_type
+    SELECT b.*, c.name as campsite_name, c.id as campsite_id
     FROM bookings b
     JOIN campsites c ON b.campsite_id = c.id
     WHERE b.id = ? AND b.user_id = ? AND b.status = 'completed'
@@ -29,184 +24,188 @@ if (!$booking) {
 }
 
 // Check if review already exists
-$stmt = $conn->prepare("
-    SELECT *
-    FROM reviews
-    WHERE booking_id = ?
-");
+$stmt = $conn->prepare("SELECT id FROM reviews WHERE booking_id = ?");
 $stmt->execute([$booking_id]);
-$existing_review = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($stmt->fetch()) {
+    header('Location: index.php?page=campsite&id=' . $booking['campsite_id']);
+    exit();
+}
 
-// Handle review submission
-if (isset($_POST['submit_review']) && !$existing_review) {
+$errors = [];
+$success = false;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rating = filter_input(INPUT_POST, 'rating', FILTER_VALIDATE_INT);
     $title = filter_input(INPUT_POST, 'title', FILTER_SANITIZE_STRING);
     $comment = filter_input(INPUT_POST, 'comment', FILTER_SANITIZE_STRING);
     
-    // Validate input
-    $errors = [];
-    if ($rating < 1 || $rating > 5) {
-        $errors[] = "Please select a rating between 1 and 5 stars";
+    // Debug information
+    error_log("Review submission attempt - Rating: $rating, Title: $title, Comment length: " . strlen($comment));
+    
+    // Validation
+    if (!$rating || $rating < 1 || $rating > 5) {
+        $errors[] = "Please select a valid rating";
     }
+    
     if (empty($title)) {
-        $errors[] = "Please provide a review title";
+        $errors[] = "Please enter a title for your review";
     }
+    
     if (empty($comment)) {
-        $errors[] = "Please provide review comments";
+        $errors[] = "Please enter your review comment";
     }
     
     if (empty($errors)) {
-        $stmt = $conn->prepare("
-            INSERT INTO reviews (booking_id, user_id, campsite_id, rating, title, comment, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, NOW())
-        ");
-        $stmt->execute([
-            $booking_id,
-            $_SESSION['user_id'],
-            $booking['campsite_id'],
-            $rating,
-            $title,
-            $comment
-        ]);
-        
-        // Update campsite average rating
-        $stmt = $conn->prepare("
-            UPDATE campsites c
-            SET average_rating = (
-                SELECT AVG(rating)
-                FROM reviews
-                WHERE campsite_id = c.id
-            )
-            WHERE id = ?
-        ");
-        $stmt->execute([$booking['campsite_id']]);
-        
-        $success = "Thank you for your review!";
+        try {
+            $conn->beginTransaction();
+            
+            // Insert review
+            $stmt = $conn->prepare("
+                INSERT INTO reviews (booking_id, user_id, campsite_id, rating, title, comment, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, NOW())
+            ");
+            
+            // Debug the values being inserted
+            error_log("Attempting to insert review with values: " . 
+                     "booking_id=$booking_id, " .
+                     "user_id={$_SESSION['user_id']}, " .
+                     "campsite_id={$booking['campsite_id']}, " .
+                     "rating=$rating, " .
+                     "title='$title'");
+            
+            $stmt->execute([
+                $booking_id,
+                $_SESSION['user_id'],
+                $booking['campsite_id'],
+                $rating,
+                $title,
+                $comment
+            ]);
+            
+            // Update campsite average rating
+            $stmt = $conn->prepare("
+                UPDATE campsites c
+                SET average_rating = (
+                    SELECT COALESCE(AVG(rating), 0)
+                    FROM reviews
+                    WHERE campsite_id = c.id
+                )
+                WHERE c.id = ?
+            ");
+            $stmt->execute([$booking['campsite_id']]);
+            
+            $conn->commit();
+            $success = true;
+            
+            // Redirect to campsite page after successful submission
+            header('Location: index.php?page=campsite&id=' . $booking['campsite_id']);
+            exit();
+            
+        } catch (PDOException $e) {
+            $conn->rollBack();
+            $errors[] = "Database error: " . $e->getMessage();
+            error_log("Review submission error: " . $e->getMessage());
+            error_log("SQL State: " . $e->getCode());
+            error_log("Error Info: " . print_r($stmt->errorInfo(), true));
+        } catch (Exception $e) {
+            $conn->rollBack();
+            $errors[] = "An unexpected error occurred: " . $e->getMessage();
+            error_log("Unexpected error: " . $e->getMessage());
+        }
     }
 }
 ?>
 
 <div class="container">
-    <div class="review-page">
-        <?php if (isset($success)): ?>
-            <div class="alert alert-success">
-                <?php echo htmlspecialchars($success); ?>
-                <p class="mt-2">
-                    <a href="index.php?page=profile" class="btn btn-primary">Return to Profile</a>
-                </p>
+    <div class="review-form-container">
+        <h1>Write a Review</h1>
+        <p class="campsite-name"><?php echo htmlspecialchars($booking['campsite_name']); ?></p>
+        
+        <?php if (!empty($errors)): ?>
+            <div class="alert alert-error">
+                <?php foreach ($errors as $error): ?>
+                    <p><?php echo htmlspecialchars($error); ?></p>
+                <?php endforeach; ?>
             </div>
-        <?php else: ?>
-            <div class="review-header">
-                <h1>Write a Review</h1>
-                <p class="stay-details">
-                    for your stay at <strong><?php echo htmlspecialchars($booking['campsite_name']); ?></strong>
-                    (<?php echo date('M j, Y', strtotime($booking['check_in_date'])); ?> - 
-                    <?php echo date('M j, Y', strtotime($booking['check_out_date'])); ?>)
-                </p>
+        <?php endif; ?>
+        
+        <form method="POST" action="" class="review-form">
+            <div class="form-group">
+                <label>Rating</label>
+                <div class="star-rating">
+                    <?php for ($i = 5; $i >= 1; $i--): ?>
+                        <input type="radio" id="star<?php echo $i; ?>" name="rating" value="<?php echo $i; ?>" required
+                               class="star-input" aria-label="<?php echo $i; ?> stars">
+                        <label for="star<?php echo $i; ?>" class="star-label">★</label>
+                    <?php endfor; ?>
+                </div>
             </div>
             
-            <?php if (!empty($errors)): ?>
-                <div class="alert alert-error">
-                    <?php foreach ($errors as $error): ?>
-                        <p><?php echo htmlspecialchars($error); ?></p>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
+            <div class="form-group">
+                <label for="title">Title</label>
+                <input type="text" id="title" name="title" required 
+                       placeholder="Summarize your experience"
+                       value="<?php echo isset($_POST['title']) ? htmlspecialchars($_POST['title']) : ''; ?>">
+            </div>
             
-            <?php if ($existing_review): ?>
-                <div class="alert alert-info">
-                    <p>You have already submitted a review for this stay.</p>
-                    <p class="mt-2">
-                        <a href="index.php?page=profile" class="btn btn-primary">Return to Profile</a>
-                    </p>
-                </div>
-            <?php else: ?>
-                <form method="POST" action="" class="review-form">
-                    <div class="form-group">
-                        <label>Rating</label>
-                        <div class="star-rating">
-                            <?php for ($i = 5; $i >= 1; $i--): ?>
-                                <input type="radio" id="star<?php echo $i; ?>" name="rating" value="<?php echo $i; ?>" required>
-                                <label for="star<?php echo $i; ?>" title="<?php echo $i; ?> stars">★</label>
-                            <?php endfor; ?>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="title">Review Title</label>
-                        <input type="text" id="title" name="title" required
-                               placeholder="Sum up your experience in a few words"
-                               value="<?php echo isset($_POST['title']) ? htmlspecialchars($_POST['title']) : ''; ?>">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="comment">Your Review</label>
-                        <textarea id="comment" name="comment" rows="6" required
-                                  placeholder="Tell others about your camping experience..."><?php echo isset($_POST['comment']) ? htmlspecialchars($_POST['comment']) : ''; ?></textarea>
-                        <small>Your review will help other campers make better decisions</small>
-                    </div>
-                    
-                    <div class="form-actions">
-                        <a href="index.php?page=profile" class="btn btn-secondary">Cancel</a>
-                        <button type="submit" name="submit_review" class="btn btn-primary">Submit Review</button>
-                    </div>
-                </form>
-            <?php endif; ?>
-        </div>
+            <div class="form-group">
+                <label for="comment">Your Review</label>
+                <textarea id="comment" name="comment" rows="6" required
+                          placeholder="Tell us about your experience at this campsite"><?php echo isset($_POST['comment']) ? htmlspecialchars($_POST['comment']) : ''; ?></textarea>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Submit Review</button>
+        </form>
     </div>
 </div>
 
 <style>
-.review-page {
-    max-width: 800px;
+.review-form-container {
+    max-width: 600px;
     margin: 2rem auto;
     padding: 2rem;
     background: white;
-    border-radius: 0.5rem;
+    border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.review-header {
-    margin-bottom: 2rem;
-    text-align: center;
-}
-
-.review-header h1 {
-    color: var(--primary-color);
+.review-form-container h1 {
+    color: #2c3e50;
     margin-bottom: 0.5rem;
 }
 
-.stay-details {
-    color: #666;
-}
-
-.review-form {
-    max-width: 600px;
-    margin: 0 auto;
+.campsite-name {
+    color: #7f8c8d;
+    margin-bottom: 2rem;
 }
 
 .star-rating {
     display: flex;
     flex-direction: row-reverse;
     justify-content: flex-end;
-    gap: 0.25rem;
+    gap: 0.5rem;
+    position: relative;
 }
 
-.star-rating input {
-    display: none;
+.star-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
 }
 
-.star-rating label {
+.star-label {
     font-size: 2rem;
     color: #ddd;
     cursor: pointer;
-    transition: color 0.2s ease-in-out;
+    transition: color 0.2s ease;
+    padding: 0 0.25rem;
 }
 
-.star-rating label:hover,
-.star-rating label:hover ~ label,
-.star-rating input:checked ~ label {
-    color: #ffd700;
+.star-label:hover,
+.star-label:hover ~ .star-label,
+.star-input:checked ~ .star-label {
+    color: #f1c40f;
 }
 
 .form-group {
@@ -216,7 +215,7 @@ if (isset($_POST['submit_review']) && !$existing_review) {
 .form-group label {
     display: block;
     margin-bottom: 0.5rem;
-    color: #333;
+    color: #2c3e50;
     font-weight: 500;
 }
 
@@ -225,7 +224,7 @@ if (isset($_POST['submit_review']) && !$existing_review) {
     width: 100%;
     padding: 0.75rem;
     border: 1px solid #ddd;
-    border-radius: 0.25rem;
+    border-radius: 4px;
     font-size: 1rem;
 }
 
@@ -233,36 +232,71 @@ if (isset($_POST['submit_review']) && !$existing_review) {
     resize: vertical;
 }
 
-.form-group small {
-    display: block;
-    margin-top: 0.25rem;
-    color: #666;
-    font-size: 0.875rem;
-}
-
-.form-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-    margin-top: 2rem;
+.btn-primary {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1.1rem;
 }
 
 .alert {
-    text-align: center;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    border-radius: 4px;
 }
 
-.mt-2 {
-    margin-top: 1rem;
+.alert-error {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
 }
 
 @media (max-width: 768px) {
-    .review-page {
-        padding: 1rem;
+    .review-form-container {
         margin: 1rem;
+        padding: 1.5rem;
     }
     
-    .star-rating label {
+    .star-label {
         font-size: 1.75rem;
     }
 }
-</style> 
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const starInputs = document.querySelectorAll('.star-input');
+    const starLabels = document.querySelectorAll('.star-label');
+    
+    starLabels.forEach((label, index) => {
+        label.addEventListener('mouseover', function() {
+            this.style.color = '#f1c40f';
+            let prev = this.nextElementSibling;
+            while (prev) {
+                prev.style.color = '#f1c40f';
+                prev = prev.nextElementSibling;
+            }
+        });
+        
+        label.addEventListener('mouseout', function() {
+            const checkedInput = document.querySelector('.star-input:checked');
+            if (!checkedInput) {
+                this.style.color = '#ddd';
+                let prev = this.nextElementSibling;
+                while (prev) {
+                    prev.style.color = '#ddd';
+                    prev = prev.nextElementSibling;
+                }
+            }
+        });
+    });
+    
+    // Ensure at least one star is selected
+    document.querySelector('.review-form').addEventListener('submit', function(e) {
+        const rating = document.querySelector('input[name="rating"]:checked');
+        if (!rating) {
+            e.preventDefault();
+            alert('Please select a rating');
+        }
+    });
+});
+</script> 

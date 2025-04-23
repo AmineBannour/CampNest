@@ -3,7 +3,15 @@
 $campsite_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 // Fetch campsite details
-$stmt = $conn->prepare("SELECT * FROM campsites WHERE id = ?");
+$stmt = $conn->prepare("
+    SELECT c.*, 
+           COALESCE(AVG(r.rating), 0) as average_rating,
+           COUNT(r.id) as review_count
+    FROM campsites c
+    LEFT JOIN reviews r ON c.id = r.campsite_id
+    WHERE c.id = ?
+    GROUP BY c.id
+");
 $stmt->execute([$campsite_id]);
 $campsite = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -45,6 +53,29 @@ if ($check_in && $check_out) {
     ");
     $stmt->execute([$campsite_id, $check_out, $check_in]);
     $is_available = $stmt->fetchColumn() == 0;
+}
+
+// Check if user has completed stays at this campsite
+$can_review = false;
+$review_booking_id = null;
+if (isset($_SESSION['user_id'])) {
+    $stmt = $conn->prepare("
+        SELECT b.id
+        FROM bookings b
+        WHERE b.user_id = ? 
+        AND b.campsite_id = ? 
+        AND b.status = 'completed'
+        AND NOT EXISTS (
+            SELECT 1 FROM reviews r WHERE r.booking_id = b.id
+        )
+        LIMIT 1
+    ");
+    $stmt->execute([$_SESSION['user_id'], $campsite_id]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($result) {
+        $can_review = true;
+        $review_booking_id = $result['id'];
+    }
 }
 ?>
 
@@ -188,85 +219,86 @@ if ($check_in && $check_out) {
 
 <div class="reviews-section">
     <h2>Reviews</h2>
+    
+    <?php if ($can_review): ?>
+        <div class="review-action">
+            <a href="index.php?page=review&booking_id=<?php echo $review_booking_id; ?>" class="btn btn-primary">
+                Write a Review
+            </a>
+        </div>
+    <?php endif; ?>
+    
     <?php
-    // Fetch reviews for this campsite
+    // Fetch reviews
     $stmt = $conn->prepare("
-        SELECT r.*, u.first_name, u.last_name
+        SELECT r.*, u.first_name, u.last_name, DATE_FORMAT(r.created_at, '%M %d, %Y') as review_date
         FROM reviews r
         JOIN users u ON r.user_id = u.id
         WHERE r.campsite_id = ?
         ORDER BY r.created_at DESC
     ");
-    $stmt->execute([$campsite['id']]);
+    $stmt->execute([$campsite_id]);
     $reviews = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Calculate rating distribution
+    $rating_distribution = array_fill(1, 5, 0);
+    foreach ($reviews as $review) {
+        $rating_distribution[$review['rating']]++;
+    }
     ?>
     
     <div class="reviews-summary">
-        <div class="rating-overview">
-            <div class="average-rating">
-                <span class="rating-number"><?php echo number_format($campsite['average_rating'], 1); ?></span>
-                <div class="stars">
-                    <?php
-                    $rating = round($campsite['average_rating'] * 2) / 2;
-                    for ($i = 1; $i <= 5; $i++) {
-                        if ($rating >= $i) {
-                            echo '<span class="star full">★</span>';
-                        } elseif ($rating > $i - 0.5) {
-                            echo '<span class="star half">★</span>';
-                        } else {
-                            echo '<span class="star empty">★</span>';
-                        }
-                    }
-                    ?>
-                </div>
-                <span class="review-count"><?php echo count($reviews); ?> reviews</span>
-            </div>
-            
-            <div class="rating-bars">
+        <div class="average-rating">
+            <div class="rating-number"><?php echo number_format($campsite['average_rating'], 1); ?></div>
+            <div class="stars">
                 <?php
-                $ratings = array_count_values(array_column($reviews, 'rating'));
-                for ($i = 5; $i >= 1; $i--) {
-                    $count = isset($ratings[$i]) ? $ratings[$i] : 0;
-                    $percentage = count($reviews) > 0 ? ($count / count($reviews) * 100) : 0;
+                $full_stars = floor($campsite['average_rating']);
+                $half_star = $campsite['average_rating'] - $full_stars >= 0.5;
+                
+                for ($i = 1; $i <= 5; $i++) {
+                    if ($i <= $full_stars) {
+                        echo '★';
+                    } elseif ($i == $full_stars + 1 && $half_star) {
+                        echo '½';
+                    } else {
+                        echo '☆';
+                    }
+                }
                 ?>
-                <div class="rating-bar">
-                    <span class="stars"><?php echo $i; ?> stars</span>
-                    <div class="bar-container">
-                        <div class="bar" style="width: <?php echo $percentage; ?>%"></div>
-                    </div>
-                    <span class="count"><?php echo $count; ?></span>
-                </div>
-                <?php } ?>
             </div>
+            <div class="total-reviews"><?php echo $campsite['review_count']; ?> reviews</div>
+        </div>
+        
+        <div class="rating-bars">
+            <?php for ($i = 5; $i >= 1; $i--): ?>
+                <div class="rating-bar">
+                    <span class="stars"><?php echo str_repeat('★', $i); ?></span>
+                    <div class="bar-container">
+                        <div class="bar" style="width: <?php echo $campsite['review_count'] > 0 ? ($rating_distribution[$i] / $campsite['review_count'] * 100) : 0; ?>%"></div>
+                    </div>
+                    <span class="count"><?php echo $rating_distribution[$i]; ?></span>
+                </div>
+            <?php endfor; ?>
         </div>
     </div>
     
     <div class="reviews-list">
-        <?php if (empty($reviews)): ?>
-            <p class="no-reviews">No reviews yet. Be the first to review this campsite!</p>
-        <?php else: ?>
+        <?php if (!empty($reviews)): ?>
             <?php foreach ($reviews as $review): ?>
                 <div class="review-card">
                     <div class="review-header">
-                        <div class="reviewer-info">
-                            <span class="reviewer-name">
-                                <?php echo htmlspecialchars($review['first_name'] . ' ' . substr($review['last_name'], 0, 1) . '.'); ?>
-                            </span>
-                            <span class="review-date">
-                                <?php echo date('F Y', strtotime($review['created_at'])); ?>
-                            </span>
-                        </div>
-                        <div class="review-rating">
-                            <?php for ($i = 1; $i <= 5; $i++): ?>
-                                <span class="star <?php echo $i <= $review['rating'] ? 'full' : 'empty'; ?>">★</span>
-                            <?php endfor; ?>
-                        </div>
+                        <div class="reviewer-name"><?php echo htmlspecialchars($review['first_name'] . ' ' . $review['last_name']); ?></div>
+                        <div class="review-date"><?php echo $review['review_date']; ?></div>
                     </div>
-                    
+                    <div class="review-rating">
+                        <?php echo str_repeat('★', $review['rating']) . str_repeat('☆', 5 - $review['rating']); ?>
+                    </div>
                     <h3 class="review-title"><?php echo htmlspecialchars($review['title']); ?></h3>
                     <p class="review-comment"><?php echo nl2br(htmlspecialchars($review['comment'])); ?></p>
                 </div>
             <?php endforeach; ?>
+        <?php else: ?>
+            <p class="no-reviews">No reviews yet. Be the first to review this campsite!</p>
         <?php endif; ?>
     </div>
 </div>
@@ -439,166 +471,156 @@ if ($check_in && $check_out) {
 }
 
 .reviews-section {
-    margin-top: 3rem;
-    padding-top: 2rem;
-    border-top: 1px solid #eee;
+    margin-top: 40px;
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .reviews-summary {
-    background: white;
-    padding: 1.5rem;
-    border-radius: 0.5rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin-bottom: 2rem;
-}
-
-.rating-overview {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2rem;
-    align-items: center;
+    display: flex;
+    gap: 40px;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
 }
 
 .average-rating {
     text-align: center;
+    min-width: 150px;
 }
 
 .rating-number {
-    font-size: 3rem;
-    font-weight: 600;
-    color: var(--primary-color);
-    line-height: 1;
+    font-size: 48px;
+    font-weight: bold;
+    color: #2c3e50;
 }
 
 .stars {
-    margin: 0.5rem 0;
-    color: #ffd700;
-    font-size: 1.25rem;
+    color: #f1c40f;
+    font-size: 24px;
+    margin: 10px 0;
 }
 
-.star {
-    margin: 0 1px;
-}
-
-.star.empty {
-    color: #ddd;
-}
-
-.star.half {
-    position: relative;
-    display: inline-block;
-}
-
-.star.half:after {
-    content: '★';
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 50%;
-    overflow: hidden;
-    color: #ffd700;
-}
-
-.review-count {
-    color: #666;
-    font-size: 0.875rem;
+.total-reviews {
+    color: #7f8c8d;
+    font-size: 14px;
 }
 
 .rating-bars {
-    display: grid;
-    gap: 0.5rem;
+    flex-grow: 1;
 }
 
 .rating-bar {
-    display: grid;
-    grid-template-columns: 60px 1fr 40px;
+    display: flex;
     align-items: center;
-    gap: 1rem;
-    font-size: 0.875rem;
+    margin: 5px 0;
 }
 
 .bar-container {
+    flex-grow: 1;
     height: 8px;
-    background: #eee;
+    background: #ecf0f1;
     border-radius: 4px;
+    margin: 0 10px;
     overflow: hidden;
 }
 
 .bar {
     height: 100%;
-    background: var(--primary-color);
+    background: #f1c40f;
     border-radius: 4px;
     transition: width 0.3s ease;
 }
 
+.count {
+    min-width: 30px;
+    text-align: right;
+    color: #7f8c8d;
+    font-size: 14px;
+}
+
 .reviews-list {
-    display: grid;
-    gap: 1rem;
+    margin-top: 30px;
 }
 
 .review-card {
-    background: white;
-    padding: 1.5rem;
-    border-radius: 0.5rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 20px;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.review-card:last-child {
+    border-bottom: none;
 }
 
 .review-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 1rem;
-}
-
-.reviewer-info {
-    display: flex;
-    flex-direction: column;
+    margin-bottom: 10px;
 }
 
 .reviewer-name {
-    font-weight: 500;
+    font-weight: bold;
+    color: #2c3e50;
 }
 
 .review-date {
-    color: #666;
-    font-size: 0.875rem;
+    color: #7f8c8d;
+    font-size: 14px;
+}
+
+.review-rating {
+    color: #f1c40f;
+    margin-bottom: 10px;
 }
 
 .review-title {
-    font-size: 1.125rem;
-    margin-bottom: 0.5rem;
-    color: var(--primary-color);
+    font-size: 18px;
+    color: #2c3e50;
+    margin: 10px 0;
 }
 
 .review-comment {
-    color: #333;
-    line-height: 1.5;
+    color: #34495e;
+    line-height: 1.6;
 }
 
 .no-reviews {
     text-align: center;
-    color: #666;
-    padding: 2rem;
-    background: white;
-    border-radius: 0.5rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    color: #7f8c8d;
+    padding: 20px;
 }
 
 @media (max-width: 768px) {
-    .rating-overview {
-        grid-template-columns: 1fr;
-        text-align: center;
-    }
-    
-    .rating-bars {
-        max-width: 400px;
-        margin: 0 auto;
-    }
-    
-    .review-header {
+    .reviews-summary {
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 20px;
     }
+    
+    .average-rating {
+        min-width: auto;
+    }
+}
+
+.review-action {
+    margin-bottom: 20px;
+    text-align: right;
+}
+
+.review-action .btn {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #4a90e2;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.review-action .btn:hover {
+    background-color: #357abd;
 }
 </style>
 

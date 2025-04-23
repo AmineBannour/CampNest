@@ -1,32 +1,50 @@
 <?php
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
+use PHPMailer\PHPMailer\SMTP;
 
-require 'vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 
 class Mailer {
     private $mailer;
     private $conn;
+    private $logger;
     
     public function __construct($conn) {
         $this->conn = $conn;
-        $this->mailer = new PHPMailer(true);
-        
-        // Configure PHPMailer
-        $this->mailer->isSMTP();
-        $this->mailer->Host = $_ENV['SMTP_HOST'];
-        $this->mailer->SMTPAuth = true;
-        $this->mailer->Username = $_ENV['SMTP_USERNAME'];
-        $this->mailer->Password = $_ENV['SMTP_PASSWORD'];
-        $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $this->mailer->Port = $_ENV['SMTP_PORT'];
-        
-        $this->mailer->setFrom($_ENV['MAIL_FROM_ADDRESS'], 'CampNest');
-        $this->mailer->isHTML(true);
+        $this->initializeMailer();
+    }
+    
+    private function initializeMailer() {
+        try {
+            $this->mailer = new PHPMailer(true);
+            
+            // Server settings
+            $this->mailer->SMTPDebug = SMTP::DEBUG_OFF;
+            $this->mailer->isSMTP();
+            $this->mailer->Host = $_ENV['SMTP_HOST'];
+            $this->mailer->SMTPAuth = true;
+            $this->mailer->Username = $_ENV['SMTP_USERNAME'];
+            $this->mailer->Password = $_ENV['SMTP_PASSWORD'];
+            $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            $this->mailer->Port = $_ENV['SMTP_PORT'];
+            
+            // Default sender
+            $this->mailer->setFrom($_ENV['MAIL_FROM_ADDRESS'], $_ENV['MAIL_FROM_NAME']);
+            $this->mailer->isHTML(true);
+            
+        } catch (Exception $e) {
+            $this->logError('Mailer initialization failed', $e);
+            throw new Exception('Email system initialization failed. Please try again later.');
+        }
     }
     
     public function sendBookingConfirmation($booking_id) {
         try {
+            // Reset all recipients and attachments
+            $this->mailer->clearAllRecipients();
+            $this->mailer->clearAttachments();
+            
             // Fetch booking details
             $stmt = $this->conn->prepare("
                 SELECT b.*, u.email, u.first_name, c.name as campsite_name
@@ -37,6 +55,10 @@ class Mailer {
             ");
             $stmt->execute([$booking_id]);
             $booking = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$booking) {
+                throw new Exception("Booking not found");
+            }
             
             // Fetch booked services
             $stmt = $this->conn->prepare("
@@ -72,7 +94,7 @@ class Mailer {
                 foreach ($services as $service) {
                     $servicesList .= sprintf(
                         '<li>%s (x%d) - $%s</li>',
-                        $service['name'],
+                        htmlspecialchars($service['name']),
                         $service['quantity'],
                         number_format($service['price'] * $service['quantity'], 2)
                     );
@@ -86,10 +108,13 @@ class Mailer {
             $this->mailer->Body = $body;
             $this->mailer->send();
             
+            // Log success
+            $this->logSuccess('Booking confirmation email sent', $booking_id);
             return true;
+            
         } catch (Exception $e) {
-            error_log("Failed to send booking confirmation email: " . $e->getMessage());
-            return false;
+            $this->logError('Failed to send booking confirmation email', $e, ['booking_id' => $booking_id]);
+            throw new Exception('Failed to send confirmation email. Please contact support.');
         }
     }
     
@@ -170,9 +195,22 @@ class Mailer {
     
     private function getEmailTemplate($template_name) {
         $template_path = __DIR__ . "/email_templates/{$template_name}.html";
-        if (file_exists($template_path)) {
-            return file_get_contents($template_path);
+        if (!file_exists($template_path)) {
+            throw new Exception("Email template not found: {$template_name}");
         }
-        throw new Exception("Email template not found: {$template_name}");
+        return file_get_contents($template_path);
+    }
+    
+    private function logError($message, $exception, $context = []) {
+        $log_entry = date('Y-m-d H:i:s') . " ERROR: {$message}. " . 
+                     "Exception: " . $exception->getMessage() . 
+                     ($context ? " Context: " . json_encode($context) : "") . PHP_EOL;
+                     
+        error_log($log_entry, 3, __DIR__ . '/../logs/mail_errors.log');
+    }
+    
+    private function logSuccess($message, $booking_id) {
+        $log_entry = date('Y-m-d H:i:s') . " SUCCESS: {$message}. Booking ID: {$booking_id}" . PHP_EOL;
+        error_log($log_entry, 3, __DIR__ . '/../logs/mail_success.log');
     }
 } 

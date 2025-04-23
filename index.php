@@ -13,7 +13,7 @@
     require_once 'includes/header.php';
     
     $page = isset($_GET['page']) ? $_GET['page'] : 'home';
-    $allowed_pages = ['home', 'campsites', 'campsite', 'booking', 'profile', 'login', 'register', 'admin'];
+    $allowed_pages = ['home', 'campsites', 'campsite', 'booking', 'profile', 'login', 'register', 'admin', 'review'];
     
     if (in_array($page, $allowed_pages)) {
         include "pages/$page.php";

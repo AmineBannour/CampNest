@@ -395,4 +395,26 @@ if (isset($_POST['update_profile'])) {
         grid-template-columns: 1fr;
     }
 }
+
+.booking-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+.status-completed {
+    color: #10b981;
+}
+
+.status-pending {
+    color: #f59e0b;
+}
+
+.status-cancelled {
+    color: #ef4444;
+}
 </style> 

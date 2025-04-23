@@ -69,14 +69,14 @@ CREATE TABLE IF NOT EXISTS booking_services (
 
 -- Reviews table
 CREATE TABLE IF NOT EXISTS reviews (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id INT PRIMARY KEY AUTO_INCREMENT,
     booking_id INT NOT NULL,
     user_id INT NOT NULL,
     campsite_id INT NOT NULL,
-    rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
     title VARCHAR(255) NOT NULL,
     comment TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (booking_id) REFERENCES bookings(id),
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (campsite_id) REFERENCES campsites(id),
@@ -115,4 +115,7 @@ INSERT INTO services (name, description, price, type) VALUES
 INSERT INTO campsites (name, description, type, price_per_night, capacity, amenities) VALUES
 ('Pine Valley Retreat', 'Peaceful campsite nestled in a pine forest with mountain views. Perfect for families and nature lovers.', 'Tent Site', 45.00, 6, '["Fire Pit", "Picnic Table", "Water Access", "Parking Space", "Pet Friendly"]'),
 ('Lakeside Haven', 'Beautiful waterfront campsite with direct lake access. Great for fishing and water activities.', 'RV Site', 65.00, 4, '["Electric Hookup", "Water Hookup", "Fire Pit", "Picnic Table", "Lake View", "Boat Launch"]'),
-('Mountain Vista', 'Elevated campsite offering panoramic mountain views. Ideal for experienced campers.', 'Tent Site', 55.00, 4, '["Fire Pit", "Bear Box", "Picnic Table", "Hiking Trails", "Scenic View"]'); 
+('Mountain Vista', 'Elevated campsite offering panoramic mountain views. Ideal for experienced campers.', 'Tent Site', 55.00, 4, '["Fire Pit", "Bear Box", "Picnic Table", "Hiking Trails", "Scenic View"]');
+
+-- Add average_rating column to campsites table if it doesn't exist
+ALTER TABLE campsites ADD COLUMN IF NOT EXISTS average_rating DECIMAL(3,2) DEFAULT NULL; 
